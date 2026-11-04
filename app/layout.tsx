@@ -2,8 +2,8 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Korea Link Router',
-  description: 'Geo-based link router',
+  title: 'KOREA_ROUTER // GEO-LINK',
+  description: 'Geo-based link router — neon console',
 }
 
 export default function RootLayout({
