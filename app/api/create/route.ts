@@ -29,9 +29,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(
       {
-        id,
-        link: `${origin}/${id}`,
         ...mapping,
+        link: `${origin}/${id}`,
       },
       { status: 201 }
     )
