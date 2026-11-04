@@ -3,15 +3,21 @@ import { kv } from '@/lib/kv'
 
 export async function GET() {
   try {
-    const keys = await kv.keys('mapping:*')
+    // Use the index set instead of KEYS
+    const ids = (await kv.smembers('mapping:ids')) as string[]
+
+    if (!ids || ids.length === 0) {
+      return NextResponse.json([])
+    }
 
     const mappings = await Promise.all(
-      keys.map(async (key) => {
-        const data = await kv.get(key)
+      ids.map(async (id) => {
+        const data = await kv.get(`mapping:${id}`)
         return data
       })
     )
 
+    // Filter out any nulls (in case a key was deleted without updating the set)
     return NextResponse.json(mappings.filter(Boolean))
   } catch (error) {
     console.error(error)
