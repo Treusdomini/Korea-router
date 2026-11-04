@@ -21,13 +21,11 @@ export default function Dashboard() {
     try {
       const res = await fetch('/api/list')
       const data = await res.json()
-      if (Array.isArray(data)) {
-        setList(data)
-      } else {
-        setList([])
-      }
+      // Always expect an array from /api/list
+      setList(Array.isArray(data) ? data : [])
     } catch {
       setList([])
+      setMessage('Failed to load mappings')
     }
   }
 
@@ -51,14 +49,18 @@ export default function Dashboard() {
         body: JSON.stringify({ englishUrl: en, koreanUrl: ko }),
       })
 
+      const data = await res.json()
+
       if (res.ok) {
         setEn('')
         setKo('')
-        setMessage('Link created successfully')
-        fetchList()
+        // Show the short link immediately so the user sees it
+        const short = data.link || `/${data.id}`
+        setMessage(`Link created: ${short}`)
+        // Refresh list so the new row appears with full URLs
+        await fetchList()
       } else {
-        const err = await res.json()
-        setMessage(err.error || 'Failed to create')
+        setMessage(data.error || 'Failed to create')
       }
     } catch {
       setMessage('Network error')
@@ -74,24 +76,21 @@ export default function Dashboard() {
     setMessage('')
 
     try {
-      // Prefer query param (more reliable than DELETE body across proxies)
       const res = await fetch(`/api/delete?id=${encodeURIComponent(id)}`, {
         method: 'DELETE',
       })
 
       if (res.ok) {
         setMessage('Link deleted')
-        // Optimistic update
         setList((prev) => prev.filter((m) => m.id !== id))
       } else {
         const err = await res.json().catch(() => ({}))
         setMessage(err.error || 'Failed to delete')
-        // Still refresh to stay in sync
-        fetchList()
+        await fetchList()
       }
     } catch {
       setMessage('Network error while deleting')
-      fetchList()
+      await fetchList()
     }
 
     setDeletingId(null)
@@ -135,7 +134,14 @@ export default function Dashboard() {
             {loading ? 'PROCESSING...' : '>> CREATE_SHORT_LINK'}
           </button>
           {message && (
-            <p className={`msg ${message.toLowerCase().includes('success') || message.toLowerCase().includes('deleted') ? 'ok' : 'err'}`}>
+            <p
+              className={`msg ${
+                message.toLowerCase().includes('created') ||
+                message.toLowerCase().includes('deleted')
+                  ? 'ok'
+                  : 'err'
+              }`}
+            >
               {message}
             </p>
           )}
@@ -166,13 +172,18 @@ export default function Dashboard() {
                   <tr key={m.id}>
                     <td className="id-cell">{m.id}</td>
                     <td className="url-cell" title={m.englishUrl}>
-                      <code>{m.englishUrl}</code>
+                      {m.englishUrl || '—'}
                     </td>
                     <td className="url-cell" title={m.koreanUrl}>
-                      <code>{m.koreanUrl}</code>
+                      {m.koreanUrl || '—'}
                     </td>
                     <td>
-                      <a className="short-link" href={`/${m.id}`} target="_blank" rel="noopener">
+                      <a
+                        className="short-link"
+                        href={`/${m.id}`}
+                        target="_blank"
+                        rel="noopener"
+                      >
                         /{m.id}
                       </a>
                     </td>
@@ -352,6 +363,7 @@ export default function Dashboard() {
         .msg {
           margin: 0.9rem 0 0;
           font-size: 0.85rem;
+          word-break: break-all;
         }
 
         .msg.ok {
@@ -387,6 +399,7 @@ export default function Dashboard() {
           padding: 0.75rem 0.9rem;
           border-bottom: 1px solid rgba(255, 255, 255, 0.04);
           vertical-align: middle;
+          color: var(--text);
         }
 
         .table tr:hover td {
@@ -397,18 +410,15 @@ export default function Dashboard() {
           color: var(--neon-yellow);
           font-family: 'Orbitron', monospace;
           font-size: 0.8rem;
-        }
-
-        .url-cell {
-          max-width: 200px;
-          overflow: hidden;
-          text-overflow: ellipsis;
           white-space: nowrap;
         }
 
-        .url-cell code {
-          font-family: inherit;
-          color: var(--text);
+        .url-cell {
+          max-width: 220px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          color: #c8c8ff;
           font-size: 0.8rem;
         }
 
@@ -416,6 +426,7 @@ export default function Dashboard() {
           color: var(--neon-cyan);
           text-decoration: none;
           text-shadow: 0 0 6px #00f0ff66;
+          white-space: nowrap;
         }
 
         .short-link:hover {
@@ -443,7 +454,9 @@ export default function Dashboard() {
         }
 
         @keyframes blink {
-          50% { opacity: 0; }
+          50% {
+            opacity: 0;
+          }
         }
 
         @media (max-width: 640px) {
@@ -451,7 +464,7 @@ export default function Dashboard() {
             font-size: 1.4rem;
           }
           .url-cell {
-            max-width: 120px;
+            max-width: 140px;
           }
         }
       `}</style>
