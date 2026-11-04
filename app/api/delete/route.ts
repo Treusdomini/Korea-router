@@ -10,6 +10,8 @@ export async function DELETE(req: NextRequest) {
     }
 
     await kv.del(`mapping:${id}`)
+    await kv.srem('mapping:ids', id) // also remove from the index
+
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error(error)
