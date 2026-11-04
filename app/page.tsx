@@ -15,11 +15,20 @@ export default function Dashboard() {
   const [ko, setKo] = useState('')
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   async function fetchList() {
-    const res = await fetch('/api/list')
-    const data = await res.json()
-    setList(data)
+    try {
+      const res = await fetch('/api/list')
+      const data = await res.json()
+      if (Array.isArray(data)) {
+        setList(data)
+      } else {
+        setList([])
+      }
+    } catch {
+      setList([])
+    }
   }
 
   useEffect(() => {
@@ -35,20 +44,24 @@ export default function Dashboard() {
     setLoading(true)
     setMessage('')
 
-    const res = await fetch('/api/create', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ englishUrl: en, koreanUrl: ko }),
-    })
+    try {
+      const res = await fetch('/api/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ englishUrl: en, koreanUrl: ko }),
+      })
 
-    if (res.ok) {
-      setEn('')
-      setKo('')
-      setMessage('Link created successfully')
-      fetchList()
-    } else {
-      const err = await res.json()
-      setMessage(err.error || 'Failed to create')
+      if (res.ok) {
+        setEn('')
+        setKo('')
+        setMessage('Link created successfully')
+        fetchList()
+      } else {
+        const err = await res.json()
+        setMessage(err.error || 'Failed to create')
+      }
+    } catch {
+      setMessage('Network error')
     }
 
     setLoading(false)
@@ -57,92 +70,391 @@ export default function Dashboard() {
   async function del(id: string) {
     if (!confirm('Delete this link?')) return
 
-    await fetch('/api/delete', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id }),
-    })
+    setDeletingId(id)
+    setMessage('')
 
-    fetchList()
+    try {
+      // Prefer query param (more reliable than DELETE body across proxies)
+      const res = await fetch(`/api/delete?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      })
+
+      if (res.ok) {
+        setMessage('Link deleted')
+        // Optimistic update
+        setList((prev) => prev.filter((m) => m.id !== id))
+      } else {
+        const err = await res.json().catch(() => ({}))
+        setMessage(err.error || 'Failed to delete')
+        // Still refresh to stay in sync
+        fetchList()
+      }
+    } catch {
+      setMessage('Network error while deleting')
+      fetchList()
+    }
+
+    setDeletingId(null)
   }
 
   return (
-    <div style={{ maxWidth: 800, margin: '2rem auto', padding: '0 1rem' }}>
-      <h1 style={{ marginBottom: '1.5rem' }}>Korea Link Router</h1>
+    <div className="dashboard">
+      <header className="header">
+        <div className="logo">
+          <span className="bracket">[</span>
+          <span className="title">KOREA_ROUTER</span>
+          <span className="bracket">]</span>
+        </div>
+        <div className="subtitle">GEO-LINK // SYS.v1.0</div>
+      </header>
 
-      <div style={{ background: 'white', padding: '1.5rem', borderRadius: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: '2rem' }}>
-        <input
-          placeholder="English URL (https://...)"
-          value={en}
-          onChange={(e) => setEn(e.target.value)}
-          style={{ width: '100%', padding: '0.75rem', marginBottom: 8, border: '1px solid #cbd5e1', borderRadius: 8 }}
-        />
-        <input
-          placeholder="Korean URL (https://...)"
-          value={ko}
-          onChange={(e) => setKo(e.target.value)}
-          style={{ width: '100%', padding: '0.75rem', marginBottom: 12, border: '1px solid #cbd5e1', borderRadius: 8 }}
-        />
-        <button
-          onClick={create}
-          disabled={loading}
-          style={{
-            width: '100%',
-            padding: '0.75rem',
-            background: '#2563eb',
-            color: 'white',
-            border: 'none',
-            borderRadius: 8,
-            cursor: 'pointer',
-            fontWeight: 600,
-          }}
-        >
-          {loading ? 'Creating...' : 'Create Short Link'}
-        </button>
-        {message && (
-          <p style={{ marginTop: 12, color: message.includes('success') ? 'green' : 'red' }}>
-            {message}
-          </p>
-        )}
-      </div>
+      <section className="panel create-panel">
+        <div className="panel-header">
+          <span className="panel-tag">NEW_LINK</span>
+        </div>
+        <div className="panel-body">
+          <label className="label">ENGLISH_URL</label>
+          <input
+            className="input"
+            placeholder="https://example.com/en"
+            value={en}
+            onChange={(e) => setEn(e.target.value)}
+          />
+          <label className="label">KOREAN_URL</label>
+          <input
+            className="input"
+            placeholder="https://example.com/ko"
+            value={ko}
+            onChange={(e) => setKo(e.target.value)}
+          />
+          <button
+            className="btn primary"
+            onClick={create}
+            disabled={loading}
+          >
+            {loading ? 'PROCESSING...' : '>> CREATE_SHORT_LINK'}
+          </button>
+          {message && (
+            <p className={`msg ${message.toLowerCase().includes('success') || message.toLowerCase().includes('deleted') ? 'ok' : 'err'}`}>
+              {message}
+            </p>
+          )}
+        </div>
+      </section>
 
-      <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white', borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-        <thead>
-          <tr style={{ background: '#f1f5f9' }}>
-            <th style={{ padding: 12, textAlign: 'left' }}>ID</th>
-            <th style={{ padding: 12, textAlign: 'left' }}>English</th>
-            <th style={{ padding: 12, textAlign: 'left' }}>Korean</th>
-            <th style={{ padding: 12, textAlign: 'left' }}>Short Link</th>
-            <th style={{ padding: 12 }}></th>
-          </tr>
-        </thead>
-        <tbody>
-          {list.map((m) => (
-            <tr key={m.id} style={{ borderTop: '1px solid #e2e8f0' }}>
-              <td style={{ padding: 12 }}>{m.id}</td>
-              <td style={{ padding: 12, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                <code>{m.englishUrl}</code>
-              </td>
-              <td style={{ padding: 12, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                <code>{m.koreanUrl}</code>
-              </td>
-              <td style={{ padding: 12 }}>
-                <a href={`/${m.id}`} target="_blank" rel="noopener">
-                  /{m.id}
-                </a>
-              </td>
-              <td style={{ padding: 12 }}>
-                <button
-                  onClick={() => del(m.id)}
-                  style={{ background: '#ef4444', color: 'white', border: 'none', padding: '4px 10px', borderRadius: 6, cursor: 'pointer' }}
-                >
-                  Delete
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <section className="panel list-panel">
+        <div className="panel-header">
+          <span className="panel-tag">ACTIVE_MAPPINGS</span>
+          <span className="count">{list.length} entries</span>
+        </div>
+        <div className="table-wrap">
+          {list.length === 0 ? (
+            <div className="empty">NO_MAPPINGS_FOUND // create one above</div>
+          ) : (
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>ENGLISH</th>
+                  <th>KOREAN</th>
+                  <th>SHORT</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {list.map((m) => (
+                  <tr key={m.id}>
+                    <td className="id-cell">{m.id}</td>
+                    <td className="url-cell" title={m.englishUrl}>
+                      <code>{m.englishUrl}</code>
+                    </td>
+                    <td className="url-cell" title={m.koreanUrl}>
+                      <code>{m.koreanUrl}</code>
+                    </td>
+                    <td>
+                      <a className="short-link" href={`/${m.id}`} target="_blank" rel="noopener">
+                        /{m.id}
+                      </a>
+                    </td>
+                    <td>
+                      <button
+                        className="btn danger"
+                        onClick={() => del(m.id)}
+                        disabled={deletingId === m.id}
+                      >
+                        {deletingId === m.id ? '...' : 'DEL'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </section>
+
+      <footer className="footer">
+        <span>STATUS: ONLINE</span>
+        <span className="blink">_</span>
+      </footer>
+
+      <style jsx>{`
+        .dashboard {
+          max-width: 960px;
+          margin: 0 auto;
+          padding: 2rem 1rem 4rem;
+          position: relative;
+        }
+
+        .header {
+          text-align: center;
+          margin-bottom: 2.5rem;
+        }
+
+        .logo {
+          font-family: 'Orbitron', sans-serif;
+          font-size: 2rem;
+          font-weight: 700;
+          letter-spacing: 0.15em;
+          color: var(--neon-cyan);
+          text-shadow: var(--glow-cyan);
+        }
+
+        .bracket {
+          color: var(--neon-pink);
+          text-shadow: var(--glow-pink);
+        }
+
+        .title {
+          margin: 0 0.25rem;
+        }
+
+        .subtitle {
+          margin-top: 0.4rem;
+          font-size: 0.85rem;
+          color: var(--muted);
+          letter-spacing: 0.3em;
+        }
+
+        .panel {
+          background: var(--panel);
+          border: 1px solid var(--border);
+          border-radius: 4px;
+          margin-bottom: 1.75rem;
+          box-shadow:
+            0 0 0 1px rgba(0, 240, 255, 0.08),
+            0 0 24px rgba(0, 240, 255, 0.06);
+          overflow: hidden;
+        }
+
+        .panel-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 0.6rem 1rem;
+          background: linear-gradient(90deg, rgba(0, 240, 255, 0.08), transparent);
+          border-bottom: 1px solid rgba(0, 240, 255, 0.2);
+        }
+
+        .panel-tag {
+          font-family: 'Orbitron', sans-serif;
+          font-size: 0.75rem;
+          letter-spacing: 0.2em;
+          color: var(--neon-cyan);
+          text-shadow: 0 0 6px #00f0ff88;
+        }
+
+        .count {
+          font-size: 0.75rem;
+          color: var(--muted);
+        }
+
+        .panel-body {
+          padding: 1.25rem 1rem;
+        }
+
+        .label {
+          display: block;
+          font-size: 0.7rem;
+          letter-spacing: 0.15em;
+          color: var(--neon-pink);
+          margin-bottom: 0.35rem;
+          margin-top: 0.75rem;
+        }
+
+        .label:first-of-type {
+          margin-top: 0;
+        }
+
+        .input {
+          width: 100%;
+          padding: 0.7rem 0.85rem;
+          background: #080810;
+          border: 1px solid #2a2a40;
+          border-radius: 2px;
+          color: var(--text);
+          outline: none;
+          transition: border-color 0.15s, box-shadow 0.15s;
+        }
+
+        .input:focus {
+          border-color: var(--neon-cyan);
+          box-shadow: 0 0 0 1px var(--neon-cyan), 0 0 12px #00f0ff33;
+        }
+
+        .input::placeholder {
+          color: #444466;
+        }
+
+        .btn {
+          display: inline-block;
+          padding: 0.65rem 1.1rem;
+          border: 1px solid transparent;
+          border-radius: 2px;
+          cursor: pointer;
+          font-weight: 600;
+          letter-spacing: 0.08em;
+          transition: all 0.15s;
+        }
+
+        .btn:disabled {
+          opacity: 0.55;
+          cursor: not-allowed;
+        }
+
+        .btn.primary {
+          width: 100%;
+          margin-top: 1.1rem;
+          background: transparent;
+          border-color: var(--neon-cyan);
+          color: var(--neon-cyan);
+          text-shadow: 0 0 6px #00f0ff88;
+        }
+
+        .btn.primary:hover:not(:disabled) {
+          background: rgba(0, 240, 255, 0.12);
+          box-shadow: var(--glow-cyan);
+        }
+
+        .btn.danger {
+          padding: 0.3rem 0.65rem;
+          font-size: 0.75rem;
+          background: transparent;
+          border-color: var(--danger);
+          color: var(--danger);
+        }
+
+        .btn.danger:hover:not(:disabled) {
+          background: rgba(255, 51, 102, 0.15);
+          box-shadow: 0 0 10px #ff336655;
+        }
+
+        .msg {
+          margin: 0.9rem 0 0;
+          font-size: 0.85rem;
+        }
+
+        .msg.ok {
+          color: var(--neon-green);
+          text-shadow: var(--glow-green);
+        }
+
+        .msg.err {
+          color: var(--danger);
+        }
+
+        .table-wrap {
+          overflow-x: auto;
+        }
+
+        .table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 0.85rem;
+        }
+
+        .table th {
+          text-align: left;
+          padding: 0.7rem 0.9rem;
+          font-size: 0.7rem;
+          letter-spacing: 0.12em;
+          color: var(--muted);
+          border-bottom: 1px solid rgba(0, 240, 255, 0.15);
+          background: rgba(0, 0, 0, 0.25);
+        }
+
+        .table td {
+          padding: 0.75rem 0.9rem;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+          vertical-align: middle;
+        }
+
+        .table tr:hover td {
+          background: rgba(0, 240, 255, 0.03);
+        }
+
+        .id-cell {
+          color: var(--neon-yellow);
+          font-family: 'Orbitron', monospace;
+          font-size: 0.8rem;
+        }
+
+        .url-cell {
+          max-width: 200px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .url-cell code {
+          font-family: inherit;
+          color: var(--text);
+          font-size: 0.8rem;
+        }
+
+        .short-link {
+          color: var(--neon-cyan);
+          text-decoration: none;
+          text-shadow: 0 0 6px #00f0ff66;
+        }
+
+        .short-link:hover {
+          text-decoration: underline;
+        }
+
+        .empty {
+          padding: 2.5rem 1rem;
+          text-align: center;
+          color: var(--muted);
+          letter-spacing: 0.1em;
+        }
+
+        .footer {
+          text-align: center;
+          margin-top: 2rem;
+          font-size: 0.75rem;
+          color: var(--muted);
+          letter-spacing: 0.2em;
+        }
+
+        .blink {
+          animation: blink 1.1s step-end infinite;
+          color: var(--neon-green);
+        }
+
+        @keyframes blink {
+          50% { opacity: 0; }
+        }
+
+        @media (max-width: 640px) {
+          .logo {
+            font-size: 1.4rem;
+          }
+          .url-cell {
+            max-width: 120px;
+          }
+        }
+      `}</style>
     </div>
   )
 }
