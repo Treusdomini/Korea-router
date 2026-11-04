@@ -23,14 +23,21 @@ export async function POST(req: NextRequest) {
       createdAt: new Date().toISOString(),
     }
 
+    // Store the mapping
     await kv.set(`mapping:${id}`, mapping)
 
-    const origin = req.nextUrl.origin
+    // Keep an index of all IDs (this is what the list endpoint will use)
+    await kv.sadd('mapping:ids', id)
+
+    // Prefer APP_DOMAIN, fall back to request origin
+    const domain = process.env.APP_DOMAIN
+      ? `https://${process.env.APP_DOMAIN}`
+      : req.nextUrl.origin
 
     return NextResponse.json(
       {
         ...mapping,
-        link: `${origin}/${id}`,
+        link: `${domain}/${id}`,
       },
       { status: 201 }
     )
